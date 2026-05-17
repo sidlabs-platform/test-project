@@ -1,0 +1,100 @@
+# =============================================================================
+# CI Workflow — equivalent of azure-pipelines.yml
+# Triggers on push to main, excludes docs-only changes
+# =============================================================================
+name: CI - Build & Test
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+
+permissions:
+  contents: read
+  checks: write        # For test result annotations
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  # ─── Job 1: Build & Test ─────────────────────────────────────────────
+  build-and-test:
+    name: '🔨 Build, Lint & Test'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: '📥 Checkout'
+        uses: actions/checkout@v4
+
+      - name: '⬢ Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: '📦 Install Dependencies'
+        run: npm ci
+
+      - name: '🔍 Lint'
+        run: npm run lint
+
+      - name: '🧪 Run Tests'
+        run: npm test -- --ci --reporters=default --reporters=jest-junit
+        env:
+          JEST_JUNIT_OUTPUT_DIR: ./test-results
+          JEST_JUNIT_OUTPUT_NAME: results.xml
+
+      - name: '📊 Publish Test Results'
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: 'Unit Tests'
+          path: test-results/results.xml
+          reporter: jest-junit
+          fail-on-error: false
+
+      - name: '📈 Upload Coverage'
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+      - name: '📦 Build'
+        run: npm run build
+
+      - name: '🚀 Upload Artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: drop
+          path: |
+            src/**
+            package.json
+            package-lock.json
+          retention-days: 30
+
+  # ─── Job 2: Security Scan ────────────────────────────────────────────
+  security-scan:
+    name: '🔒 Security Scan'
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - name: '📥 Checkout'
+        uses: actions/checkout@v4
+
+      - name: '⬢ Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: '📦 Install Dependencies'
+        run: npm ci
+
+      - name: '🛡️ npm audit'
+        run: npm audit --audit-level=high
+        continue-on-error: true   # Report but don't block for demo
