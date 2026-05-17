@@ -1,0 +1,36 @@
+name: test-project/PR_Validation
+on:
+  pull_request:
+    branches:
+    - main
+    paths:
+    - "*"
+    - "!*.md"
+    - "!docs/**"
+env:
+  nodeVersion: 20.x
+  npmCacheFolder: "${{ runner.workspace }}/.npm"
+jobs:
+  Validate:
+    name: ✅ PR Validation
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+    - uses: "./.github/actions/pipelines_templates_setup_node"
+      with:
+        nodeVersion: "${{ env.nodeVersion }}"
+    - uses: "./.github/actions/pipelines_templates_install_deps"
+      with:
+        cacheFolder: "${{ env.npmCacheFolder }}"
+    - name: "\U0001F50D Lint"
+      run: npm run lint
+    - name: "\U0001F9EA Run Tests"
+      run: npm test -- --ci
+    - name: "\U0001F4DD Generate Summary"
+      run: |-
+        echo "## PR Validation Summary" > ${{ github.workspace }}/pr-summary.md
+        echo "- ✅ Lint passed" >> ${{ github.workspace }}/pr-summary.md
+        echo "- ✅ Tests passed" >> ${{ github.workspace }}/pr-summary.md
+        echo "- Node.js: ${{ env.nodeVersion }}" >> ${{ github.workspace }}/pr-summary.md
+        echo "- Branch: ${{ github.ref }}" >> ${{ github.workspace }}/pr-summary.md
