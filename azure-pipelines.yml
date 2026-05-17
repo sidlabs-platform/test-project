@@ -1,0 +1,106 @@
+# =============================================================================
+# Main CI Pipeline — triggers on main branch
+# Best practices: multi-stage, template reuse, caching, artifact publishing
+# =============================================================================
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - '*.md'
+      - docs/**
+
+pr: none  # PR validation handled by separate pipeline
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: task-board-vars           # Link a variable group for secrets
+  - name: nodeVersion
+    value: '20.x'
+  - name: npmCacheFolder
+    value: $(Pipeline.Workspace)/.npm
+  - name: isMain
+    value: $[eq(variables['Build.SourceBranch'], 'refs/heads/main')]
+
+stages:
+  # ─── Stage 1: Build & Test ─────────────────────────────────────────────
+  - stage: Build
+    displayName: '🔨 Build & Test'
+    jobs:
+      - job: BuildAndTest
+        displayName: 'Build, Lint & Test'
+        steps:
+          - template: pipelines/templates/setup-node.yml
+            parameters:
+              nodeVersion: $(nodeVersion)
+
+          - template: pipelines/templates/install-deps.yml
+            parameters:
+              cacheFolder: $(npmCacheFolder)
+
+          - script: npm run lint
+            displayName: '🔍 Lint'
+            continueOnError: false
+
+          - script: npm test -- --ci --reporters=default --reporters=jest-junit
+            displayName: '🧪 Run Tests'
+            env:
+              JEST_JUNIT_OUTPUT_DIR: $(System.DefaultWorkingDirectory)/test-results
+              JEST_JUNIT_OUTPUT_NAME: results.xml
+
+          - task: PublishTestResults@2
+            displayName: '📊 Publish Test Results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'test-results/results.xml'
+              mergeTestResults: true
+              testRunTitle: 'Unit Tests'
+
+          - task: PublishCodeCoverageResults@2
+            displayName: '📈 Publish Coverage'
+            condition: succeededOrFailed()
+            inputs:
+              summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage/cobertura-coverage.xml'
+
+          - script: npm run build
+            displayName: '📦 Build'
+
+          - task: CopyFiles@2
+            displayName: 'Stage Artifacts'
+            inputs:
+              SourceFolder: '$(System.DefaultWorkingDirectory)'
+              Contents: |
+                src/**
+                package.json
+                package-lock.json
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+          - task: PublishBuildArtifacts@1
+            displayName: '🚀 Publish Artifact'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'drop'
+
+  # ─── Stage 2: Security Scan ────────────────────────────────────────────
+  - stage: SecurityScan
+    displayName: '🔒 Security Scan'
+    dependsOn: Build
+    jobs:
+      - job: AuditDeps
+        displayName: 'Dependency Audit'
+        steps:
+          - template: pipelines/templates/setup-node.yml
+            parameters:
+              nodeVersion: $(nodeVersion)
+
+          - template: pipelines/templates/install-deps.yml
+            parameters:
+              cacheFolder: $(npmCacheFolder)
+
+          - script: npm audit --audit-level=high
+            displayName: '🛡️ npm audit'
+            continueOnError: true   # Report but don't block for demo

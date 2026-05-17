@@ -1,0 +1,115 @@
+# =============================================================================
+# CD Pipeline — Multi-environment deployment (Dev → Staging → Production)
+# Best practices: environment approvals, health checks, rollback strategy
+# =============================================================================
+trigger: none   # Triggered by CI pipeline completion
+
+resources:
+  pipelines:
+    - pipeline: ci
+      source: 'task-board-ci'      # Name of your CI pipeline
+      trigger:
+        branches:
+          include:
+            - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: task-board-vars
+  - name: appName
+    value: 'task-board-webapp'
+  - name: azureSubscription
+    value: 'Azure-ServiceConnection'   # Replace with your service connection
+
+stages:
+  # ─── Deploy to Dev ─────────────────────────────────────────────────────
+  - stage: DeployDev
+    displayName: '🟢 Deploy to Dev'
+    jobs:
+      - deployment: DeployDev
+        displayName: 'Deploy to Dev'
+        environment: 'task-board-dev'     # No approval needed
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: ci
+                  artifact: drop
+
+                - template: templates/deploy-webapp.yml
+                  parameters:
+                    environment: 'dev'
+                    appName: '$(appName)-dev'
+                    azureSubscription: '$(azureSubscription)'
+                    artifactPath: '$(Pipeline.Workspace)/ci/drop'
+
+            postRouteTraffic:
+              steps:
+                - template: templates/smoke-test.yml
+                  parameters:
+                    appUrl: 'https://$(appName)-dev.azurewebsites.net'
+
+  # ─── Deploy to Staging ─────────────────────────────────────────────────
+  - stage: DeployStaging
+    displayName: '🟡 Deploy to Staging'
+    dependsOn: DeployDev
+    jobs:
+      - deployment: DeployStaging
+        displayName: 'Deploy to Staging'
+        environment: 'task-board-staging'   # Requires approval
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: ci
+                  artifact: drop
+
+                - template: templates/deploy-webapp.yml
+                  parameters:
+                    environment: 'staging'
+                    appName: '$(appName)-staging'
+                    azureSubscription: '$(azureSubscription)'
+                    artifactPath: '$(Pipeline.Workspace)/ci/drop'
+
+            postRouteTraffic:
+              steps:
+                - template: templates/smoke-test.yml
+                  parameters:
+                    appUrl: 'https://$(appName)-staging.azurewebsites.net'
+
+  # ─── Deploy to Production ──────────────────────────────────────────────
+  - stage: DeployProd
+    displayName: '🔴 Deploy to Production'
+    dependsOn: DeployStaging
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployProd
+        displayName: 'Deploy to Production'
+        environment: 'task-board-production'   # Requires manual approval
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: ci
+                  artifact: drop
+
+                - template: templates/deploy-webapp.yml
+                  parameters:
+                    environment: 'production'
+                    appName: '$(appName)'
+                    azureSubscription: '$(azureSubscription)'
+                    artifactPath: '$(Pipeline.Workspace)/ci/drop'
+
+            postRouteTraffic:
+              steps:
+                - template: templates/smoke-test.yml
+                  parameters:
+                    appUrl: 'https://$(appName).azurewebsites.net'
+
+            on:
+              failure:
+                steps:
+                  - script: echo "⚠️ Production deployment failed! Investigate immediately."
+                    displayName: '🚨 Alert on Failure'

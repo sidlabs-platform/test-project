@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Board</title>
+<style>
+  :root { --bg: #0f172a; --surface: #1e293b; --border: #334155; --text: #e2e8f0; --muted: #94a3b8; --blue: #3b82f6; --green: #22c55e; --amber: #f59e0b; --red: #ef4444; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem; }
+  .health { font-size: 0.75rem; color: var(--green); display: flex; align-items: center; gap: 0.35rem; }
+  .health .dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { opacity: .4; } }
+  .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; padding: 1.5rem 2rem; max-width: 1200px; margin: 0 auto; }
+  .column { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; min-height: 400px; }
+  .column-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+  .column-header h2 { font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .count { background: var(--border); color: var(--muted); font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 9999px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.85rem; margin-bottom: 0.6rem; cursor: grab; transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s; }
+  .card:hover { border-color: var(--blue); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+  .card.dragging { opacity: 0.5; }
+  .card-title { font-size: 0.875rem; font-weight: 600; margin-bottom: 0.3rem; }
+  .card-desc { font-size: 0.75rem; color: var(--muted); line-height: 1.4; margin-bottom: 0.5rem; }
+  .card-meta { display: flex; align-items: center; justify-content: space-between; }
+  .priority { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.15rem 0.45rem; border-radius: 0.25rem; font-weight: 600; }
+  .priority.high   { background: rgba(239,68,68,0.15); color: var(--red); }
+  .priority.medium { background: rgba(245,158,11,0.15); color: var(--amber); }
+  .priority.low    { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .delete-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.85rem; padding: 0.1rem 0.3rem; border-radius: 0.25rem; opacity: 0; transition: opacity 0.15s; }
+  .card:hover .delete-btn { opacity: 1; }
+  .delete-btn:hover { color: var(--red); background: rgba(239,68,68,0.1); }
+  .cards.drop-active { border: 2px dashed var(--blue); border-radius: 0.5rem; background: rgba(59,130,246,0.05); min-height: 3rem; }
+  .add-bar { padding: 0 2rem 1.5rem; max-width: 1200px; margin: 0 auto; }
+  .add-form { display: flex; gap: 0.5rem; background: var(--surface); padding: 0.75rem; border-radius: 0.75rem; border: 1px solid var(--border); }
+  .add-form input, .add-form select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.85rem; }
+  .add-form input[name="title"] { flex: 2; }
+  .add-form input[name="description"] { flex: 3; }
+  .add-form select { width: 110px; }
+  .add-form button { background: var(--blue); color: white; border: none; padding: 0.5rem 1.25rem; border-radius: 0.5rem; cursor: pointer; font-weight: 600; font-size: 0.85rem; white-space: nowrap; }
+  .add-form button:hover { background: #2563eb; }
+  .stats { display: flex; gap: 1rem; padding: 0 2rem 1rem; max-width: 1200px; margin: 0 auto; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.6rem 1rem; font-size: 0.8rem; color: var(--muted); }
+  .stat strong { color: var(--text); }
+  @media (max-width: 768px) { .board { grid-template-columns: 1fr; } .add-form { flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>📋</span> Task Board</h1>
+  <div class="health"><div class="dot"></div> <span id="healthText">Checking...</span></div>
+</header>
+<div class="stats" id="stats"></div>
+<div class="add-bar">
+  <form class="add-form" id="addForm">
+    <input name="title" placeholder="Task title…" required autocomplete="off">
+    <input name="description" placeholder="Description (optional)" autocomplete="off">
+    <select name="priority"><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select>
+    <button type="submit">+ Add Task</button>
+  </form>
+</div>
+<div class="board">
+  <div class="column" data-status="todo">
+    <div class="column-header"><h2>📝 To Do</h2><span class="count" id="count-todo">0</span></div>
+    <div class="cards" id="col-todo"></div>
+  </div>
+  <div class="column" data-status="in-progress">
+    <div class="column-header"><h2>🔄 In Progress</h2><span class="count" id="count-in-progress">0</span></div>
+    <div class="cards" id="col-in-progress"></div>
+  </div>
+  <div class="column" data-status="done">
+    <div class="column-header"><h2>✅ Done</h2><span class="count" id="count-done">0</span></div>
+    <div class="cards" id="col-done"></div>
+  </div>
+</div>
+<script>
+const API = '/api/tasks';
+async function loadTasks() {
+  const res = await fetch(API);
+  const tasks = await res.json();
+  render(tasks);
+}
+function render(tasks) {
+  ['todo', 'in-progress', 'done'].forEach(status => {
+    const col = document.getElementById('col-' + status);
+    const filtered = tasks.filter(t => t.status === status);
+    document.getElementById('count-' + status).textContent = filtered.length;
+    col.innerHTML = '';
+    filtered.forEach(t => col.appendChild(createCard(t)));
+  });
+  document.getElementById('stats').innerHTML =
+    '<div class="stat">Total: <strong>' + tasks.length + '</strong></div>' +
+    '<div class="stat">To Do: <strong>' + tasks.filter(t => t.status === 'todo').length + '</strong></div>' +
+    '<div class="stat">In Progress: <strong>' + tasks.filter(t => t.status === 'in-progress').length + '</strong></div>' +
+    '<div class="stat">Done: <strong>' + tasks.filter(t => t.status === 'done').length + '</strong></div>';
+}
+function createCard(task) {
+  var card = document.createElement('div');
+  card.className = 'card';
+  card.draggable = true;
+  card.dataset.id = task.id;
+  var desc = task.description ? '<div class="card-desc">' + esc(task.description) + '</div>' : '';
+  card.innerHTML =
+    '<div class="card-title">' + esc(task.title) + '</div>' +
+    desc +
+    '<div class="card-meta">' +
+    '<span class="priority ' + task.priority + '">' + task.priority + '</span>' +
+    '<button class="delete-btn" title="Delete">✕</button>' +
+    '</div>';
+  card.querySelector('.delete-btn').addEventListener('click', function() { deleteTask(task.id); });
+  card.addEventListener('dragstart', function(e) { e.dataTransfer.setData('text/plain', task.id); card.classList.add('dragging'); });
+  card.addEventListener('dragend', function() { card.classList.remove('dragging'); });
+  return card;
+}
+document.querySelectorAll('.column').forEach(function(col) {
+  col.addEventListener('dragover', function(e) { e.preventDefault(); col.querySelector('.cards').classList.add('drop-active'); });
+  col.addEventListener('dragleave', function() { col.querySelector('.cards').classList.remove('drop-active'); });
+  col.addEventListener('drop', function(e) {
+    e.preventDefault();
+    col.querySelector('.cards').classList.remove('drop-active');
+    var id = e.dataTransfer.getData('text/plain');
+    fetch(API + '/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: col.dataset.status }) })
+      .then(function() { loadTasks(); });
+  });
+});
+document.getElementById('addForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var fd = new FormData(e.target);
+  fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: fd.get('title'), description: fd.get('description'), priority: fd.get('priority') }) })
+    .then(function() { e.target.reset(); loadTasks(); });
+});
+function deleteTask(id) {
+  fetch(API + '/' + id, { method: 'DELETE' }).then(function() { loadTasks(); });
+}
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+(function() {
+  fetch('/health').then(function(r) { return r.json(); }).then(function(d) {
+    document.getElementById('healthText').textContent = 'Healthy · ' + Math.floor(d.uptime) + 's uptime';
+  }).catch(function() { document.getElementById('healthText').textContent = 'Unreachable'; });
+})();
+loadTasks();
+</script>
+</body>
+</html>

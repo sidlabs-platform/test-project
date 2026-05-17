@@ -1,0 +1,11 @@
+# Reusable template: Set up Node.js
+parameters:
+  - name: nodeVersion
+    type: string
+    default: '20.x'
+
+steps:
+  - task: NodeTool@0
+    displayName: 'Use Node.js ${{ parameters.nodeVersion }}'
+    inputs:
+      versionSpec: '${{ parameters.nodeVersion }}'

@@ -1,0 +1,49 @@
+# =============================================================================
+# PR Validation Pipeline — runs on every pull request to main
+# Fast feedback: lint + test only, no artifact publishing
+# =============================================================================
+trigger: none
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - '*.md'
+      - docs/**
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - name: nodeVersion
+    value: '20.x'
+  - name: npmCacheFolder
+    value: $(Pipeline.Workspace)/.npm
+
+jobs:
+  - job: Validate
+    displayName: '✅ PR Validation'
+    steps:
+      - template: templates/setup-node.yml
+        parameters:
+          nodeVersion: $(nodeVersion)
+
+      - template: templates/install-deps.yml
+        parameters:
+          cacheFolder: $(npmCacheFolder)
+
+      - script: npm run lint
+        displayName: '🔍 Lint'
+
+      - script: npm test -- --ci
+        displayName: '🧪 Run Tests'
+
+      - script: |
+          echo "## PR Validation Summary" > $(System.DefaultWorkingDirectory)/pr-summary.md
+          echo "- ✅ Lint passed" >> $(System.DefaultWorkingDirectory)/pr-summary.md
+          echo "- ✅ Tests passed" >> $(System.DefaultWorkingDirectory)/pr-summary.md
+          echo "- Node.js: $(nodeVersion)" >> $(System.DefaultWorkingDirectory)/pr-summary.md
+          echo "- Branch: $(System.PullRequest.SourceBranch)" >> $(System.DefaultWorkingDirectory)/pr-summary.md
+        displayName: '📝 Generate Summary'

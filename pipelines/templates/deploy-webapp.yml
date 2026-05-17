@@ -1,0 +1,27 @@
+# Reusable template: Deploy to Azure App Service
+parameters:
+  - name: environment
+    type: string
+  - name: appName
+    type: string
+  - name: azureSubscription
+    type: string
+  - name: artifactPath
+    type: string
+
+steps:
+  - script: echo "Deploying to ${{ parameters.environment }} → ${{ parameters.appName }}"
+    displayName: '📋 Deployment Info'
+
+  - task: AzureWebApp@1
+    displayName: '🚀 Deploy to ${{ parameters.environment }}'
+    inputs:
+      azureSubscription: '${{ parameters.azureSubscription }}'
+      appType: 'webAppLinux'
+      appName: '${{ parameters.appName }}'
+      package: '${{ parameters.artifactPath }}'
+      runtimeStack: 'NODE|20-lts'
+      startUpCommand: 'npm start'
+      appSettings: |
+        -NODE_ENV ${{ parameters.environment }}
+        -APP_VERSION $(Build.BuildNumber)

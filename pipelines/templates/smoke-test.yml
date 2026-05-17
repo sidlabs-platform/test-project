@@ -1,0 +1,28 @@
+# Reusable template: Post-deployment smoke test
+parameters:
+  - name: appUrl
+    type: string
+
+steps:
+  - script: |
+      echo "Running smoke tests against ${{ parameters.appUrl }}"
+
+      # Health check
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ parameters.appUrl }}/health")
+      if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "❌ Health check failed (HTTP $HTTP_CODE)"
+        exit 1
+      fi
+      echo "✅ Health check passed"
+
+      # API check
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ parameters.appUrl }}/api/tasks")
+      if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "❌ API check failed (HTTP $HTTP_CODE)"
+        exit 1
+      fi
+      echo "✅ API check passed"
+
+      echo "🎉 All smoke tests passed!"
+    displayName: '🏥 Smoke Test'
+    retryCountOnTaskFailure: 2    # Retry in case of transient startup delays

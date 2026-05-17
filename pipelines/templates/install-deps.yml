@@ -1,0 +1,17 @@
+# Reusable template: Install dependencies with npm cache
+parameters:
+  - name: cacheFolder
+    type: string
+    default: '$(Pipeline.Workspace)/.npm'
+
+steps:
+  - task: Cache@2
+    displayName: '📦 Cache npm'
+    inputs:
+      key: 'npm | "$(Agent.OS)" | package-lock.json'
+      restoreKeys: |
+        npm | "$(Agent.OS)"
+      path: '${{ parameters.cacheFolder }}'
+
+  - script: npm ci
+    displayName: '📥 Install Dependencies'
