@@ -1,0 +1,21 @@
+name: pipelines_templates_install_deps
+inputs:
+  cacheFolder:
+    required: false
+    default: "$(Pipeline.Workspace)/.npm"
+    type: string
+runs:
+  using: composite
+  steps:
+#   # This item has no matching transformer
+#   - task: Cache@2
+#     displayName: "\U0001F4E6 Cache npm"
+#     inputs:
+#       key: npm | "${{ runner.os }}" | package-lock.json
+#       restoreKeys: 'npm | "${{ runner.os }}"
+#
+#         '
+#       path: "${{ inputs.cacheFolder }}"
+  - name: "\U0001F4E5 Install Dependencies"
+    run: npm ci
+    shell: bash
