@@ -1,0 +1,13 @@
+name: pipelines_templates_setup_node
+inputs:
+  nodeVersion:
+    required: false
+    default: 20.x
+    type: string
+runs:
+  using: composite
+  steps:
+  - name: Use Node.js ${{ inputs.nodeVersion }}
+    uses: actions/setup-node@v4.0.0
+    with:
+      node-version: "${{ inputs.nodeVersion }}"
