@@ -1,0 +1,95 @@
+name: test-project/CI_Pipeline
+on:
+  workflow_dispatch:
+env:
+  APP_VERSION: 1.0.0
+  NODE_ENV: production
+  PORT: '3000'
+  isMain: "$[eq(variables['Build.SourceBranch'], 'refs/heads/main')]"
+  nodeVersion: 20.x
+  npmCacheFolder: "${{ runner.workspace }}/.npm"
+jobs:
+  Build-BuildAndTest:
+    name: "Build, Lint & Test"
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+    - uses: "./.github/actions/pipelines_templates_setup_node"
+      with:
+        nodeVersion: "${{ env.nodeVersion }}"
+    - uses: "./.github/actions/pipelines_templates_install_deps"
+      with:
+        cacheFolder: "${{ env.npmCacheFolder }}"
+    - name: "\U0001F50D Lint"
+      run: npm run lint
+    - name: "\U0001F9EA Run Tests"
+      env:
+        JEST_JUNIT_OUTPUT_DIR: "${{ github.workspace }}/test-results"
+        JEST_JUNIT_OUTPUT_NAME: results.xml
+      run: npm test -- --ci --reporters=default --reporters=jest-junit
+    - name: Publish test results
+      if: always()
+      uses: EnricoMi/publish-unit-test-result-action@v2.12.0
+      with:
+        comment_title: Unit Tests
+        junit_files: test-results/results.xml
+#     # This item has no matching transformer
+#     - task: PublishCodeCoverageResults@2
+#       displayName: "\U0001F4C8 Publish Coverage"
+#       condition: succeededOrFailed()
+#       inputs:
+#         summaryFileLocation: "${{ github.workspace }}/coverage/cobertura-coverage.xml"
+    - name: "\U0001F4E6 Build"
+      run: npm run build
+    # The following script preserves the globbing behavior of the CopyFiles task.
+    # Refer to this transformer's documentation for an alternative that will work in simple cases.
+    - name: Stage Artifacts
+      uses: actions/github-script@v7.0.0
+      env:
+        TARGET_FOLDER: "${{ runner.temp }}"
+        SOURCE_FOLDER: "${{ github.workspace }}"
+        CONTENTS: |
+          src/**
+          package.json
+          package-lock.json
+      with:
+        github-token: "${{ secrets.GITHUB_TOKEN }}"
+        script: |-
+          const fs = require('fs').promises
+          const path = require('path')
+          const target = path.resolve(process.env.TARGET_FOLDER)
+          process.chdir(process.env.SOURCE_FOLDER || '.')
+          if (process.env.CLEAN_TARGET_FOLDER === 'true') await io.rmRF(target)
+          const flattenFolders = process.env.FLATTEN_FOLDERS === 'true'
+          const options = {force: process.env.OVERWRITE === 'true'}
+          const globber = await glob.create(process.env.CONTENTS || '**')
+          for await (const file of globber.globGenerator()) {
+            if ((await fs.lstat(file)).isDirectory()) continue
+            const filename = flattenFolders ? path.basename(file) : file.substring(process.cwd().length)
+            const dest = path.join(target, filename)
+            await io.mkdirP(path.dirname(dest))
+            await io.cp(file, dest, options)
+          }
+    - name: "\U0001F680 Publish Artifact"
+      uses: actions/upload-artifact@v4.1.0
+      with:
+        name: drop
+        path: "${{ runner.temp }}"
+  SecurityScan-AuditDeps:
+    name: Dependency Audit
+    needs:
+    - Build-BuildAndTest
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+    - uses: "./.github/actions/pipelines_templates_setup_node"
+      with:
+        nodeVersion: "${{ env.nodeVersion }}"
+    - uses: "./.github/actions/pipelines_templates_install_deps"
+      with:
+        cacheFolder: "${{ env.npmCacheFolder }}"
+    - name: "\U0001F6E1️ npm audit"
+      continue-on-error: true
+      run: npm audit --audit-level=high
